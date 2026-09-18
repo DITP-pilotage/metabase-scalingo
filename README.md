@@ -89,3 +89,9 @@ $ cd metabase-scalingo
 $ git pull origin master
 $ git push scalingo master
 ```
+
+# Restricting Access by IP
+
+Scalingo and Metabase (open source) have no built-in IP allowlist. See
+[`proxy/README.md`](proxy/README.md) for a reverse-proxy app that filters
+incoming requests by IP before they reach Metabase.
