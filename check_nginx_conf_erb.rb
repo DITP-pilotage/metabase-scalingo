@@ -1,10 +1,11 @@
 #!/usr/bin/env ruby
 # Renders nginx.conf.erb with sample env vars and checks the output looks right.
-# Run locally after touching the template: ruby proxy/check_nginx_conf_erb.rb
+# Run locally after touching the template: ruby check_nginx_conf_erb.rb
 require "erb"
 
 ENV["ALLOWED_IPS"] = "203.0.113.10, 198.51.100.0/24"
-ENV["BACKEND_HOST"] = "my-metabase.osc-fr1.scalingo.io"
+ENV["SCALINGO_APPLICATION_ID"] = "ap-00000000-0000-0000-0000-000000000000"
+ENV["SCALINGO_PRIVATE_NETWORK_ID"] = "pn-00000000-0000-0000-0000-000000000000"
 
 template = File.read(File.join(__dir__, "nginx.conf.erb"))
 rendered = ERB.new(template).result
@@ -13,7 +14,7 @@ expected = [
   "allow 203.0.113.10;",
   "allow 198.51.100.0/24;",
   "deny all;",
-  "proxy_pass https://my-metabase.osc-fr1.scalingo.io;",
+  "proxy_pass http://metabase.ap-00000000-0000-0000-0000-000000000000.pn-00000000-0000-0000-0000-000000000000.private-network.internal:3000;",
 ]
 
 missing = expected.reject { |line| rendered.include?(line) }
