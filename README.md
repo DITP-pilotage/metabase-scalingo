@@ -124,6 +124,7 @@ In addition to the existing `BUILDPACK_URL` (must point to
 | Name          | Description                                                          |
 | ------------- | --------------------------------------------------------------------- |
 | `ALLOWED_IPS` | Comma-separated list of IPs/CIDRs allowed through the proxy.          |
+| `ACME_CHALLENGE_URL` | Optional. Base URL of the app issuing this app's custom domain certificate (e.g. `http://copilot-refresh.osc-secnum-fr1.scalingo.io`): `/.well-known/acme-challenge/` is proxied to it, bypassing `ALLOWED_IPS`. |
 
 Update `ALLOWED_IPS` and redeploy whenever the list changes — no code change
 needed.

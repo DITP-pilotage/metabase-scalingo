@@ -1,3 +1,12 @@
+<% if ENV["ACME_CHALLENGE_URL"] %>
+# ACME HTTP-01 challenges for this app's custom domain, issued and served by
+# another app (ACME_CHALLENGE_URL): outside the IP allowlist, since the CA
+# validates from its own, unlisted IPs.
+location /.well-known/acme-challenge/ {
+    proxy_pass <%= ENV["ACME_CHALLENGE_URL"] %>;
+}
+<% end %>
+
 location / {
     <% ENV.fetch("ALLOWED_IPS", "").split(",").each do |ip| %>
     allow <%= ip.strip %>;
