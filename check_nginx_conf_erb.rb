@@ -6,6 +6,7 @@ require "erb"
 ENV["ALLOWED_IPS"] = "203.0.113.10, 198.51.100.0/24"
 ENV["SCALINGO_APPLICATION_ID"] = "ap-00000000-0000-0000-0000-000000000000"
 ENV["SCALINGO_PRIVATE_NETWORK_ID"] = "pn-00000000-0000-0000-0000-000000000000"
+ENV["ACME_CHALLENGE_URL"] = "http://my-acme-app.osc-fr1.scalingo.io"
 
 template = File.read(File.join(__dir__, "nginx.conf.erb"))
 rendered = ERB.new(template).result
@@ -14,6 +15,7 @@ expected = [
   "allow 203.0.113.10;",
   "allow 198.51.100.0/24;",
   "deny all;",
+  "location /.well-known/acme-challenge/ {\n    proxy_pass http://my-acme-app.osc-fr1.scalingo.io;",
   "proxy_pass http://metabase.ap-00000000-0000-0000-0000-000000000000.pn-00000000-0000-0000-0000-000000000000.private-network.internal:3000;",
 ]
 
