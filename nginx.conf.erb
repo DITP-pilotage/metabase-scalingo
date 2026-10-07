@@ -1,9 +1,15 @@
+# Upstreams are resolved per request (variables in proxy_pass) instead of once at
+# boot: the "metabase" process's private-network name only resolves once its
+# container exists, and nginx refuses to start on an unresolvable upstream.
+resolver <%= File.read("/etc/resolv.conf")[/^nameserver\s+(\S+)/, 1] %> valid=10s ipv6=off;
+
 <% if ENV["ACME_CHALLENGE_URL"] %>
 # ACME HTTP-01 challenges for this app's custom domain, issued and served by
 # another app (ACME_CHALLENGE_URL): outside the IP allowlist, since the CA
 # validates from its own, unlisted IPs.
 location /.well-known/acme-challenge/ {
-    proxy_pass <%= ENV["ACME_CHALLENGE_URL"] %>;
+    set $acme_upstream <%= ENV["ACME_CHALLENGE_URL"] %>;
+    proxy_pass $acme_upstream;
 }
 <% end %>
 
@@ -13,7 +19,8 @@ location / {
     <% end %>
     deny all;
 
-    proxy_pass http://metabase.<%= ENV["SCALINGO_APPLICATION_ID"] %>.<%= ENV["SCALINGO_PRIVATE_NETWORK_ID"] %>.private-network.internal:3000;
+    set $metabase_upstream http://metabase.<%= ENV["SCALINGO_APPLICATION_ID"] %>.<%= ENV["SCALINGO_PRIVATE_NETWORK_ID"] %>.private-network.internal:3000;
+    proxy_pass $metabase_upstream;
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
