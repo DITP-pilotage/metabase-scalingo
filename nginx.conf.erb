@@ -1,0 +1,26 @@
+<% if ENV["ACME_CHALLENGE_URL"] %>
+# ACME HTTP-01 challenges for this app's custom domain, issued and served by
+# another app (ACME_CHALLENGE_URL): outside the IP allowlist, since the CA
+# validates from its own, unlisted IPs.
+location /.well-known/acme-challenge/ {
+    proxy_pass <%= ENV["ACME_CHALLENGE_URL"] %>;
+}
+<% end %>
+
+location / {
+    <% ENV.fetch("ALLOWED_IPS", "").split(",").each do |ip| %>
+    allow <%= ip.strip %>;
+    <% end %>
+    deny all;
+
+    proxy_pass http://metabase.<%= ENV["SCALINGO_APPLICATION_ID"] %>.<%= ENV["SCALINGO_PRIVATE_NETWORK_ID"] %>.private-network.internal:3000;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto https;
+
+    # Metabase opens websockets for some features (e.g. live dashboards)
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+}
