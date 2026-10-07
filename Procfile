@@ -1,1 +1,2 @@
-web: HEROKU=true ./bin/start
+web: bin/run
+metabase: HEROKU=true MB_JETTY_HOST=$SCALINGO_PRIVATE_HOSTNAME MB_JETTY_PORT=3000 ./bin/start

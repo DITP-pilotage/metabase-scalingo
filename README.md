@@ -89,3 +89,48 @@ $ cd metabase-scalingo
 $ git pull origin master
 $ git push scalingo master
 ```
+
+# Restricting Access by IP
+
+Scalingo and Metabase (open source) have no built-in IP allowlist. This app
+runs two process types (see `Procfile`):
+
+- `web`: an Nginx reverse proxy ([nginx-buildpack](https://github.com/Scalingo/nginx-buildpack)),
+  the only one reachable from the internet, filtering requests by IP
+  (`nginx.conf.erb`).
+- `metabase`: the actual Metabase JVM process, kept off the `web`/`tcp`/`postdeploy`
+  process-type names so Scalingo never routes public traffic to it directly.
+  It's only reachable from `web` over the project's
+  [private network](https://doc.scalingo.com/platform/networking/private/overview).
+
+```
+Internet → [web: nginx, IP allowlist] → private network → [metabase: JVM]
+```
+
+## Prerequisite: Private Networks
+
+This relies on Scalingo's Private Networks, which is a private beta at the
+time of writing: the project this app lives in must have it enabled by
+Scalingo support first (`support@scalingo.com`), or `SCALINGO_PRIVATE_NETWORK_ID`
+won't be set and `nginx.conf.erb` won't be able to build the `metabase`
+process's internal domain name. Confirm this is enabled before deploying.
+
+## Required env vars
+
+In addition to the existing `BUILDPACK_URL` (must point to
+`https://github.com/Scalingo/multi-buildpack`, see `.buildpacks`) and
+`DATABASE_URL`:
+
+| Name          | Description                                                          |
+| ------------- | --------------------------------------------------------------------- |
+| `ALLOWED_IPS` | Comma-separated list of IPs/CIDRs allowed through the proxy.          |
+| `ACME_CHALLENGE_URL` | Optional. Base URL of the app issuing this app's custom domain certificate (e.g. `http://copilot-refresh.osc-secnum-fr1.scalingo.io`): `/.well-known/acme-challenge/` is proxied to it, bypassing `ALLOWED_IPS`. |
+
+Update `ALLOWED_IPS` and redeploy whenever the list changes — no code change
+needed.
+
+## Closing the bypass
+
+Metabase's own `*.scalingo.io` URL only served the `web` process before this
+change, so once `web` is the Nginx proxy, that URL is naturally filtered too
+— there's no separate direct-access URL to close.
