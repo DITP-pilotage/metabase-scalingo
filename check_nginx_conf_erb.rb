@@ -15,8 +15,8 @@ expected = [
   "allow 203.0.113.10;",
   "allow 198.51.100.0/24;",
   "deny all;",
-  "location /.well-known/acme-challenge/ {\n    proxy_pass http://my-acme-app.osc-fr1.scalingo.io;",
-  "proxy_pass http://metabase.ap-00000000-0000-0000-0000-000000000000.pn-00000000-0000-0000-0000-000000000000.private-network.internal:3000;",
+  "location /.well-known/acme-challenge/ {\n    set $acme_upstream http://my-acme-app.osc-fr1.scalingo.io;\n    proxy_pass $acme_upstream;",
+  "set $metabase_upstream http://metabase.ap-00000000-0000-0000-0000-000000000000.pn-00000000-0000-0000-0000-000000000000.private-network.internal:3000;\n    proxy_pass $metabase_upstream;",
 ]
 
 missing = expected.reject { |line| rendered.include?(line) }
