@@ -1,2 +1,3 @@
 web: bin/run
-metabase: HEROKU=true MB_JETTY_HOST=$SCALINGO_PRIVATE_HOSTNAME MB_JETTY_PORT=3000 ./bin/start
+# PORT, not MB_JETTY_PORT: bin/start overwrites MB_JETTY_PORT with $PORT, which Scalingo sets to 0 outside of `web`.
+metabase: HEROKU=true PORT=3000 MB_JETTY_HOST=$SCALINGO_PRIVATE_HOSTNAME ./bin/start
