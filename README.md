@@ -129,6 +129,9 @@ In addition to the existing `BUILDPACK_URL` (must point to
 Update `ALLOWED_IPS` and redeploy whenever the list changes — no code change
 needed.
 
+Requests from outside `ALLOWED_IPS` get a 403 with `rie.html`, explaining that
+this instance is only reachable from the RIE.
+
 ## Closing the bypass
 
 Metabase's own `*.scalingo.io` URL only served the `web` process before this
