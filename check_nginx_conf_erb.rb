@@ -15,6 +15,7 @@ expected = [
   "allow 203.0.113.10;",
   "allow 198.51.100.0/24;",
   "deny all;",
+  "error_page 403 /rie.html;",
   "location /.well-known/acme-challenge/ {\n    set $acme_upstream http://copilot-refresh.osc-secnum-fr1.scalingo.io;\n    proxy_pass $acme_upstream;",
   "set $metabase_upstream http://metabase.ap-a71da13f-7c70-4c00-a644-eee8558d8053.pn-ad0fd6a1-d05e-40ea-bf63-c4f8a75a9d8c.private-network.internal:3000;\n    proxy_pass $metabase_upstream;",
 ]
