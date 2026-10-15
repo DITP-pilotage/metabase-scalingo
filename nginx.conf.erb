@@ -13,6 +13,13 @@ location /.well-known/acme-challenge/ {
 }
 <% end %>
 
+# Requests outside ALLOWED_IPS get a page explaining the RIE-only access (still a 403).
+error_page 403 /rie.html;
+location = /rie.html {
+    internal;
+    root /app;
+}
+
 location / {
     <% ENV.fetch("ALLOWED_IPS", "").split(",").each do |ip| %>
     allow <%= ip.strip %>;
