@@ -137,3 +137,69 @@ this instance is only reachable from the RIE.
 Metabase's own `*.scalingo.io` URL only served the `web` process before this
 change, so once `web` is the Nginx proxy, that URL is naturally filtered too
 — there's no separate direct-access URL to close.
+
+# Login with ProConnect
+
+On top of the IP allowlist, the `web` process can require a
+[ProConnect](https://www.proconnect.gouv.fr/) login before anything reaches
+Metabase. It runs [oauth2-proxy](https://oauth2-proxy.github.io/oauth2-proxy/)
+(installed by [betagouv/oauth2-proxy-buildpack](https://github.com/betagouv/oauth2-proxy-buildpack))
+next to Nginx, and Nginx checks every request against it with `auth_request`:
+
+```
+Internet → [web: nginx, IP allowlist ─auth_request→ oauth2-proxy (127.0.0.1:4180)] → private network → [metabase: JVM]
+```
+
+It's off until `OAUTH2_PROXY_CLIENT_ID` is set: without it, `bin/web` doesn't
+start oauth2-proxy and `nginx.conf.erb` doesn't add the check, so the app
+behaves exactly as before.
+
+## This is a gate, not single sign-on
+
+Metabase open source ignores identity headers from a proxy (that's the paid
+JWT/OIDC SSO), so after ProConnect, agents still log in to Metabase with their
+Metabase account. What ProConnect adds: only the agents you allow ever see
+Metabase's login page.
+
+## Setup
+
+1. Declare the app in the [ProConnect partner space](https://partenaires.proconnect.gouv.fr/apps),
+   with `https://<your-domain>/oauth2/callback` as redirect URL, and get a
+   client ID and secret. Start with the integration environment.
+2. Set the env vars below, then redeploy.
+
+| Name | Example / description |
+| ---- | --------------------- |
+| `OAUTH2_PROXY_PROVIDER` | `oidc` |
+| `OAUTH2_PROXY_OIDC_ISSUER_URL` | ProConnect's issuer, from the partner space (integration: `https://fca.integ01.dev-agentconnect.fr/api/v2`). |
+| `OAUTH2_PROXY_CLIENT_ID` | From ProConnect. Setting it turns the login on. |
+| `OAUTH2_PROXY_CLIENT_SECRET` | From ProConnect. |
+| `OAUTH2_PROXY_COOKIE_SECRET` | 32 random characters: `openssl rand -base64 32 \| head -c 32` |
+| `OAUTH2_PROXY_REDIRECT_URL` | `https://<your-domain>/oauth2/callback` |
+| `OAUTH2_PROXY_SCOPE` | `openid email given_name usual_name` |
+| `OAUTH2_PROXY_SKIP_PROVIDER_BUTTON` | `true` to go straight to ProConnect instead of oauth2-proxy's sign-in page. |
+| `OAUTH2_PROXY_COOKIE_EXPIRE` | Optional, e.g. `8h`: how often agents must go back through ProConnect. |
+
+Who gets in, using one of these (oauth2-proxy lets everyone through who matches
+either, so set only one):
+
+| Name | Description |
+| ---- | ----------- |
+| `OAUTH2_ALLOWED_EMAILS` | Comma-separated emails, e.g. `jean.dupont@interieur.gouv.fr,marie.martin@finances.gouv.fr`. Read by the buildpack's start script. |
+| `OAUTH2_PROXY_EMAIL_DOMAINS` | Comma-separated domains, e.g. `interieur.gouv.fr`. Never `*`: that lets in every ProConnect user. |
+
+With neither set, nobody gets in. Changing either takes a restart, no code change.
+
+`OAUTH2_PROXY_HTTP_ADDRESS`, `OAUTH2_PROXY_UPSTREAMS` and
+`OAUTH2_PROXY_REVERSE_PROXY` are set by `bin/web`, since `nginx.conf.erb`
+depends on them.
+
+Logging out of Metabase doesn't end the ProConnect session; `/oauth2/sign_out`
+clears oauth2-proxy's cookie.
+
+## Public links and embeds
+
+Metabase's public links (`/public/…`) and embeds go through the same check, so
+they need a ProConnect login too. To exempt them, set
+`OAUTH2_PROXY_SKIP_AUTH_ROUTES`, e.g. `^/public/,^/api/public/,^/app/` (they
+remain behind the IP allowlist).

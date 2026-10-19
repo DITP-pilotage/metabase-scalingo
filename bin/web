@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# The `web` process: Nginx (bin/run, installed by nginx-buildpack) and, once
+# ProConnect is configured (OAUTH2_PROXY_CLIENT_ID set), oauth2-proxy next to it
+# on 127.0.0.1:4180, which Nginx queries through auth_request (nginx.conf.erb).
+# If either one exits, exit too so Scalingo restarts the container.
+
+cd "$(dirname "$0")/.."
+
+pids=()
+trap 'kill -TERM "${pids[@]}" 2>/dev/null; exit 0' TERM INT
+
+if [ -n "${OAUTH2_PROXY_CLIENT_ID:-}" ]; then
+  # Fixed here, not in env vars: nginx.conf.erb expects oauth2-proxy on this
+  # address, answering auth checks only (static://202), never proxying Metabase.
+  export OAUTH2_PROXY_HTTP_ADDRESS=127.0.0.1:4180
+  export OAUTH2_PROXY_UPSTREAMS=static://202
+  export OAUTH2_PROXY_REVERSE_PROXY=true
+  bin/start_oauth2_proxy.sh &
+  pids+=($!)
+fi
+
+bin/run &
+pids+=($!)
+
+wait -n
+echo "web: a child process exited, stopping the others" >&2
+kill -TERM "${pids[@]}" 2>/dev/null
+exit 1
