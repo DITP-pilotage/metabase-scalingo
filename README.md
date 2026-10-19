@@ -178,7 +178,7 @@ Metabase's login page.
 | `OAUTH2_PROXY_REDIRECT_URL` | `https://<your-domain>/oauth2/callback` |
 | `OAUTH2_PROXY_SCOPE` | `openid email given_name usual_name` |
 | `OAUTH2_PROXY_SKIP_PROVIDER_BUTTON` | `true` to go straight to ProConnect instead of oauth2-proxy's sign-in page. |
-| `OAUTH2_PROXY_COOKIE_EXPIRE` | Optional, defaults to `8h` (set by `bin/web`): how often agents must go back through ProConnect, and how long a removed email keeps access. |
+| `OAUTH2_PROXY_COOKIE_EXPIRE` | Recommended: `8h` (oauth2-proxy's default is 7 days). How often agents must go back through ProConnect, and how long a removed email keeps access. |
 
 Who gets in, using one of these (oauth2-proxy lets everyone through who matches
 either, so set only one):
