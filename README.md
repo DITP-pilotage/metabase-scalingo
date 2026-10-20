@@ -137,3 +137,125 @@ this instance is only reachable from the RIE.
 Metabase's own `*.scalingo.io` URL only served the `web` process before this
 change, so once `web` is the Nginx proxy, that URL is naturally filtered too
 — there's no separate direct-access URL to close.
+
+# Login with ProConnect
+
+On top of the IP allowlist, the `web` process can require a
+[ProConnect](https://www.proconnect.gouv.fr/) login before anything reaches
+Metabase. It runs [oauth2-proxy](https://oauth2-proxy.github.io/oauth2-proxy/)
+(installed by [betagouv/oauth2-proxy-buildpack](https://github.com/betagouv/oauth2-proxy-buildpack))
+next to Nginx, and Nginx checks every request against it with `auth_request`:
+
+```
+Internet → [web: nginx, IP allowlist ─auth_request→ oauth2-proxy (127.0.0.1:4180)] → private network → [metabase: JVM]
+```
+
+It's off until `OAUTH2_PROXY_CLIENT_ID` is set: without it, `bin/web` doesn't
+start oauth2-proxy and `nginx.conf.erb` doesn't add the check, so the app
+behaves exactly as before.
+
+## This is a gate, not single sign-on
+
+Metabase open source ignores identity headers from a proxy (that's the paid
+JWT/OIDC SSO), so after ProConnect, agents still log in to Metabase with their
+Metabase account. What ProConnect adds: only the agents you allow ever see
+Metabase's login page.
+
+## Setup
+
+1. Declare the app in the [ProConnect partner space](https://partenaires.proconnect.gouv.fr/apps),
+   with `https://<your-domain>/oauth2/callback` as redirect URL, and get a
+   client ID and secret. Start with the integration environment.
+2. Set the env vars below, then redeploy.
+
+| Name | Example / description |
+| ---- | --------------------- |
+| `OAUTH2_PROXY_PROVIDER` | `oidc` |
+| `OAUTH2_PROXY_OIDC_ISSUER_URL` | ProConnect's issuer, from the partner space (integration: `https://fca.integ01.dev-agentconnect.fr/api/v2`). |
+| `OAUTH2_PROXY_CLIENT_ID` | From ProConnect. Setting it turns the login on. |
+| `OAUTH2_PROXY_CLIENT_SECRET` | From ProConnect. |
+| `OAUTH2_PROXY_COOKIE_SECRET` | 32 random characters: `openssl rand -base64 32 \| head -c 32` |
+| `OAUTH2_PROXY_REDIRECT_URL` | `https://<your-domain>/oauth2/callback` |
+| `OAUTH2_PROXY_SCOPE` | `openid email given_name usual_name` |
+| `OAUTH2_PROXY_SKIP_PROVIDER_BUTTON` | `true` to go straight to ProConnect instead of oauth2-proxy's sign-in page. |
+| `OAUTH2_PROXY_COOKIE_EXPIRE` | Recommended: `8h` (oauth2-proxy's default is 7 days). How often agents must go back through ProConnect, and how long a removed email keeps access. |
+
+Who gets in, using one of these (oauth2-proxy lets everyone through who matches
+either, so set only one):
+
+| Name | Description |
+| ---- | ----------- |
+| `OAUTH2_ALLOWED_EMAILS` | Comma-separated emails, **no spaces**, e.g. `jean.dupont@interieur.gouv.fr,marie.martin@finances.gouv.fr`. Read by the buildpack's start script. Safer than domains: any ProConnect account with a matching domain gets in otherwise. |
+| `OAUTH2_PROXY_EMAIL_DOMAINS` | Comma-separated domains, e.g. `interieur.gouv.fr`. Never `*`: that lets in every ProConnect user. |
+
+With neither set, nobody gets in. Changing either takes a restart, no code change.
+
+If ProConnect logins fail on an unverified email, don't set
+`OAUTH2_PROXY_INSECURE_OIDC_ALLOW_UNVERIFIED_EMAIL`: an email allowlist is only
+as good as the emails it checks.
+
+`OAUTH2_PROXY_HTTP_ADDRESS`, `OAUTH2_PROXY_UPSTREAMS` and
+`OAUTH2_PROXY_REVERSE_PROXY` are set by `bin/web`, since `nginx.conf.erb`
+depends on them.
+
+Logging out of Metabase doesn't end the ProConnect session; `/oauth2/sign_out`
+clears oauth2-proxy's cookie.
+
+## API keys, MCP and other machine clients
+
+Every request goes through the ProConnect check, including Metabase API calls
+made with an API key (e.g. Airflow's schema sync) and Metabase's MCP endpoint:
+without an oauth2-proxy cookie, they get redirected to the login page.
+
+Don't exempt `/api/` (or requests carrying an `x-api-key` header) to fix that:
+`/api/session` would then be reachable without ProConnect, and a bogus header
+would be enough to skip the check. Call the `metabase` process directly over
+the private network instead, bypassing Nginx and oauth2-proxy:
+`http://metabase.<app ID>.<private network ID>.private-network.internal:3000`
+(see `scalingo private-networks-domain-names`). The caller must be an app of the
+same Scalingo project.
+
+## Public links and embeds
+
+Metabase's public links (`/public/…`) and embeds go through the same check, so
+they need a ProConnect login too.
+
+Don't exempt them with `OAUTH2_PROXY_SKIP_AUTH_ROUTES`: oauth2-proxy matches its
+regexes on the raw request path, while Metabase normalizes it, so
+`/public/../api/session` would match `^/public/` yet reach `/api/session`
+without ProConnect. If public links are needed, add a dedicated
+`location /public/ { … }` in `nginx.conf.erb` without `auth_request`: Nginx
+picks locations on the normalized path, so that trick lands in `location /`
+and still gets checked.
+
+## Requiring multi-factor authentication
+
+ProConnect returns MFA only when asked for it with the OIDC `claims` parameter,
+and the service must check the `acr` value it gets back
+([ProConnect docs](https://partenaires.proconnect.gouv.fr/docs/fournisseur-service/double_authentification)).
+oauth2-proxy has no option for that `claims` parameter, but env vars are enough:
+
+- ask for it: skip OIDC discovery and give the authorization URL with the
+  `claims` parameter already in it (oauth2-proxy keeps it and adds its own);
+- check it: read `acr` as oauth2-proxy's "groups" claim, and only allow the MFA
+  values.
+
+| Name | Value (production; integration: `https://fca.integ01.dev-agentconnect.fr/api/v2/…`) |
+| ---- | ----- |
+| `OAUTH2_PROXY_SKIP_OIDC_DISCOVERY` | `true` |
+| `OAUTH2_PROXY_LOGIN_URL` | `https://auth.agentconnect.gouv.fr/api/v2/authorize?claims=%7B%22id_token%22%3A%7B%22acr%22%3A%7B%22essential%22%3Atrue%2C%22values%22%3A%5B%22eidas0-mfa%22%2C%22eidas1-mfa%22%2C%22eidas2%22%2C%22eidas3%22%5D%7D%7D%7D` |
+| `OAUTH2_PROXY_REDEEM_URL` | `https://auth.agentconnect.gouv.fr/api/v2/token` |
+| `OAUTH2_PROXY_PROFILE_URL` | `https://auth.agentconnect.gouv.fr/api/v2/userinfo` |
+| `OAUTH2_PROXY_OIDC_JWKS_URL` | `https://auth.agentconnect.gouv.fr/api/v2/jwks` |
+| `OAUTH2_PROXY_OIDC_GROUPS_CLAIM` | `acr` |
+| `OAUTH2_PROXY_ALLOWED_GROUPS` | `eidas0-mfa,eidas1-mfa,eidas2,eidas3` |
+
+The `claims` value is the URL-encoded
+`{"id_token":{"acr":{"essential":true,"values":["eidas0-mfa","eidas1-mfa","eidas2","eidas3"]}}}`.
+Endpoint URLs come from the issuer's `/.well-known/openid-configuration`.
+
+Check this on the integration environment first, including a login without MFA
+being refused. Until identity providers support MFA (ProConnect targets
+February 2027), ProConnect falls back to an email one-time code, which it says
+isn't available to services on the RIE: agents whose identity provider has no
+MFA may then be unable to log in at all.
