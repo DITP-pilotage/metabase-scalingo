@@ -1,3 +1,9 @@
+<%
+  # Requests outside ALLOWED_IPS are denied, on every location below except ACME.
+  allowlist = ENV.fetch("ALLOWED_IPS", "").split(",").map { |ip| "allow #{ip.strip};" } + ["deny all;"]
+  # ProConnect login (oauth2-proxy, started by bin/web) is on once it has a client ID.
+  proconnect = !ENV.fetch("OAUTH2_PROXY_CLIENT_ID", "").empty?
+%>
 # Upstreams are resolved per request (variables in proxy_pass) instead of once at
 # boot: the "metabase" process's private-network name only resolves once its
 # container exists, and nginx refuses to start on an unresolvable upstream.
@@ -20,11 +26,50 @@ location = /rie.html {
     root /app;
 }
 
-location / {
-    <% ENV.fetch("ALLOWED_IPS", "").split(",").each do |ip| %>
-    allow <%= ip.strip %>;
+<% if proconnect %>
+# ProConnect login: every request to Metabase is first checked against
+# oauth2-proxy (127.0.0.1:4180, see bin/web). Without a valid session, the
+# visitor is sent to oauth2-proxy's sign-in page, then to ProConnect.
+error_page 401 = /oauth2/sign_in;
+
+# oauth2-proxy's own pages: sign-in, ProConnect callback, sign-out.
+location /oauth2/ {
+    <% allowlist.each do |line| %>
+    <%= line %>
     <% end %>
-    deny all;
+
+    proxy_pass http://127.0.0.1:4180;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header X-Forwarded-Proto https;
+    proxy_set_header X-Forwarded-Host $host;
+    # Where to send the visitor back after login: the page they first asked for.
+    proxy_set_header X-Auth-Request-Redirect $request_uri;
+}
+
+# Session check used by auth_request: 202 if logged in and allowed, 401 otherwise.
+location = /oauth2/auth {
+    internal;
+    proxy_pass http://127.0.0.1:4180;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header X-Forwarded-Proto https;
+    proxy_set_header X-Forwarded-Uri $request_uri;
+    proxy_set_header Content-Length "";
+    proxy_pass_request_body off;
+}
+<% end %>
+
+location / {
+    <% allowlist.each do |line| %>
+    <%= line %>
+    <% end %>
+
+    <% if proconnect %>
+    auth_request /oauth2/auth;
+    <% end %>
 
     set $metabase_upstream http://metabase.<%= ENV["SCALINGO_APPLICATION_ID"] %>.<%= ENV["SCALINGO_PRIVATE_NETWORK_ID"] %>.private-network.internal:3000;
     proxy_pass $metabase_upstream;

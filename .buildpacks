@@ -1,3 +1,4 @@
 https://github.com/Scalingo/buildpack-jvm-common.git
 https://github.com/Scalingo/metabase-buildpack.git
+https://github.com/betagouv/oauth2-proxy-buildpack.git#d13e75b916acbec690a8592e3318ae58e9897bd5
 https://github.com/Scalingo/nginx-buildpack.git
