@@ -13,7 +13,22 @@
     "MAX_METASPACE_SIZE": {
       "description": "Control max memory available",
       "value": "512m"
+    },
+    "MB_SITE_URL": {
+      "description": "URL de la review app, au lieu du domaine de prod hérité du parent",
+      "generator": "url"
     }
   },
-  "addons": ["postgresql:postgresql-starter-512"]
+  "addons": ["postgresql:postgresql-starter-512"],
+  "stack": "scalingo-26",
+  "formation": {
+    "web": {
+      "amount": 1,
+      "size": "M"
+    },
+    "metabase": {
+      "amount": 0,
+      "size": "XL"
+    }
+  }
 }
