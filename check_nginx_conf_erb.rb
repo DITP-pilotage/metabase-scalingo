@@ -1,6 +1,6 @@
 #!/usr/bin/env ruby
 # Renders nginx.conf.erb with sample env vars and checks the output looks right,
-# without and with ProConnect (oauth2-proxy) configured.
+# without and with ProConnect (oauth2-proxy) configured, and with the MCP exemption.
 # Run locally after touching the template: ruby check_nginx_conf_erb.rb
 require "erb"
 
@@ -29,6 +29,10 @@ proconnect_lines = [
   "proxy_pass http://127.0.0.1:4180;",
   "auth_request /oauth2/auth;",
 ]
+mcp_lines = [
+  "location ~ ^/(api/metabase-mcp|",
+  "proxy_pass $metabase_upstream$uri$is_args$args;",
+]
 
 def check(name, rendered, expected, unexpected = [])
   missing = expected.reject { |line| rendered.include?(line) }
@@ -37,17 +41,25 @@ def check(name, rendered, expected, unexpected = [])
   raise "#{name}: should not contain #{present}" unless present.empty?
   # Each location that reaches Metabase or oauth2-proxy's pages carries the IP allowlist.
   denies = rendered.scan("deny all;").size
-  locations = rendered.scan(/location (\/|\/oauth2\/) \{/).size
+  locations = rendered.scan(/location (\/|\/oauth2\/|~ [^{]*) \{/).size
   raise "#{name}: #{locations} locations but #{denies} 'deny all;'" unless denies == locations
+  # error_page 401 would swallow Metabase's own 401 that MCP clients rely on.
+  raise "#{name}: proxy_intercept_errors" if rendered.match?(/^\s*proxy_intercept_errors/)
   puts "OK: #{name}"
 end
 
 ENV.delete("OAUTH2_PROXY_CLIENT_ID")
+ENV["PROCONNECT_SKIP_MCP"] = "true" # ignored without ProConnect
 without = render.call
-check("without ProConnect", without, common_lines, proconnect_lines)
+check("without ProConnect", without, common_lines, proconnect_lines + mcp_lines)
 
 ENV["OAUTH2_PROXY_CLIENT_ID"] = "sample-client-id"
+ENV.delete("PROCONNECT_SKIP_MCP")
 with = render.call
-check("with ProConnect", with, common_lines + proconnect_lines)
+check("with ProConnect", with, common_lines + proconnect_lines, mcp_lines)
+
+ENV["PROCONNECT_SKIP_MCP"] = "True" # case-insensitive, like most boolean env vars
+with = render.call
+check("with ProConnect, MCP exempted", with, common_lines + proconnect_lines + mcp_lines)
 
 puts with if ARGV.include?("--print")
