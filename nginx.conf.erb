@@ -3,6 +3,8 @@
   allowlist = ENV.fetch("ALLOWED_IPS", "").split(",").map { |ip| "allow #{ip.strip};" } + ["deny all;"]
   # ProConnect login (oauth2-proxy, started by bin/web) is on once it has a client ID.
   proconnect = !ENV.fetch("OAUTH2_PROXY_CLIENT_ID", "").empty?
+  # Lets Metabase's MCP clients through without ProConnect (see README).
+  skip_mcp = ENV.fetch("PROCONNECT_SKIP_MCP", "") == "true"
 %>
 # Upstreams are resolved per request (variables in proxy_pass) instead of once at
 # boot: the "metabase" process's private-network name only resolves once its
@@ -60,6 +62,30 @@ location = /oauth2/auth {
     proxy_set_header Content-Length "";
     proxy_pass_request_body off;
 }
+
+<% if skip_mcp %>
+# Metabase's MCP server and the OAuth routes its clients call without a browser,
+# so without oauth2-proxy's cookie: they skip ProConnect, but not the IP allowlist.
+# Getting a token still goes through /oauth/authorize, in a browser, which stays
+# behind ProConnect in `location /`. The regex matches the normalized path only.
+location ~ ^/(api/metabase-mcp|\.well-known/oauth-protected-resource(/api/metabase-mcp)?|\.well-known/oauth-authorization-server|oauth/(register|token|revoke))$ {
+    <% allowlist.each do |line| %>
+    <%= line %>
+    <% end %>
+
+    # Forward the normalized path ($uri, the one matched above): with a bare
+    # variable, proxy_pass sends the raw one, and e.g. /api/session/..%2Fmetabase-mcp
+    # matches here, yet Metabase would get a raw path it may resolve elsewhere. Never set
+    # proxy_intercept_errors here: error_page 401 would replace Metabase's 401
+    # (and its WWW-Authenticate, which MCP clients need) with the sign-in page.
+    set $metabase_upstream http://metabase.<%= ENV["SCALINGO_APPLICATION_ID"] %>.<%= ENV["SCALINGO_PRIVATE_NETWORK_ID"] %>.private-network.internal:3000;
+    proxy_pass $metabase_upstream$uri$is_args$args;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto https;
+}
+<% end %>
 <% end %>
 
 location / {

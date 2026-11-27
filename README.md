@@ -179,6 +179,7 @@ Metabase's login page.
 | `OAUTH2_PROXY_SCOPE` | `openid email given_name usual_name` |
 | `OAUTH2_PROXY_SKIP_PROVIDER_BUTTON` | `true` to go straight to ProConnect instead of oauth2-proxy's sign-in page. |
 | `OAUTH2_PROXY_COOKIE_EXPIRE` | Recommended: `8h` (oauth2-proxy's default is 7 days). How often agents must go back through ProConnect, and how long a removed email keeps access. |
+| `PROCONNECT_SKIP_MCP` | `true` to let Metabase's MCP clients through without ProConnect, see [below](#metabases-mcp-server). Off by default. |
 
 Who gets in, using one of these (oauth2-proxy lets everyone through who matches
 either, so set only one):
@@ -204,8 +205,9 @@ clears oauth2-proxy's cookie.
 ## API keys, MCP and other machine clients
 
 Every request goes through the ProConnect check, including Metabase API calls
-made with an API key (e.g. Airflow's schema sync) and Metabase's MCP endpoint:
-without an oauth2-proxy cookie, they get redirected to the login page.
+made with an API key (e.g. Airflow's schema sync) and, unless
+`PROCONNECT_SKIP_MCP` is set (see below), Metabase's MCP endpoint: without an
+oauth2-proxy cookie, they get redirected to the login page.
 
 Don't exempt `/api/` (or requests carrying an `x-api-key` header) to fix that:
 `/api/session` would then be reachable without ProConnect, and a bogus header
@@ -214,6 +216,30 @@ the private network instead, bypassing Nginx and oauth2-proxy:
 `http://metabase.<app ID>.<private network ID>.private-network.internal:3000`
 (see `scalingo private-networks-domain-names`). The caller must be an app of the
 same Scalingo project.
+
+### Metabase's MCP server
+
+MCP clients (Claude, etc.) call Metabase without a browser, so without
+oauth2-proxy's cookie. Set `PROCONNECT_SKIP_MCP=true` (then restart) to let
+them through: `nginx.conf.erb` then exempts from ProConnect, still behind
+`ALLOWED_IPS`, only the routes they call that way, as Metabase's OAuth discovery
+lists them:
+
+- `/api/metabase-mcp`, the MCP server itself: answers 401 without a Metabase token;
+- `/.well-known/oauth-protected-resource` (and `…/api/metabase-mcp`),
+  `/.well-known/oauth-authorization-server`: OAuth metadata;
+- `/oauth/register`, `/oauth/token`, `/oauth/revoke`: client registration,
+  token exchange (needs a code, with PKCE, or a refresh token) and revocation.
+
+`/oauth/authorize`, where the agent logs in to Metabase in a browser and grants
+the client access, stays behind ProConnect: no token without going through
+ProConnect first. A token outlives the ProConnect session though: removing an
+email from the allowlist doesn't cut its MCP access, deactivating its Metabase
+account does.
+
+That location forwards the normalized path (`$uri`): with a bare `proxy_pass
+$variable`, Nginx sends the raw one, so `/api/session/..%2Fmetabase-mcp` would
+match the exemption yet reach Metabase as something else.
 
 ## Public links and embeds
 
