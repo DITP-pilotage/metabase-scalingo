@@ -58,7 +58,7 @@ ENV.delete("PROCONNECT_SKIP_MCP")
 with = render.call
 check("with ProConnect", with, common_lines + proconnect_lines, mcp_lines)
 
-ENV["PROCONNECT_SKIP_MCP"] = "true"
+ENV["PROCONNECT_SKIP_MCP"] = "True" # case-insensitive, like most boolean env vars
 with = render.call
 check("with ProConnect, MCP exempted", with, common_lines + proconnect_lines + mcp_lines)
 

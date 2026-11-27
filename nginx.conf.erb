@@ -4,7 +4,7 @@
   # ProConnect login (oauth2-proxy, started by bin/web) is on once it has a client ID.
   proconnect = !ENV.fetch("OAUTH2_PROXY_CLIENT_ID", "").empty?
   # Lets Metabase's MCP clients through without ProConnect (see README).
-  skip_mcp = ENV.fetch("PROCONNECT_SKIP_MCP", "") == "true"
+  skip_mcp = ENV.fetch("PROCONNECT_SKIP_MCP", "").strip.downcase == "true"
 %>
 # Upstreams are resolved per request (variables in proxy_pass) instead of once at
 # boot: the "metabase" process's private-network name only resolves once its
