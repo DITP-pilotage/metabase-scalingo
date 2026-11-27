@@ -177,7 +177,7 @@ Metabase's login page.
 | `OAUTH2_PROXY_COOKIE_SECRET` | 32 random characters: `openssl rand -base64 32 \| head -c 32` |
 | `OAUTH2_PROXY_REDIRECT_URL` | `https://<your-domain>/oauth2/callback` |
 | `OAUTH2_PROXY_SCOPE` | `openid email given_name usual_name` |
-| `OAUTH2_PROXY_SKIP_PROVIDER_BUTTON` | `true` to go straight to ProConnect instead of oauth2-proxy's sign-in page. |
+| `OAUTH2_PROXY_SKIP_PROVIDER_BUTTON` | `true` to go straight to ProConnect instead of the sign-in page with the ProConnect button. |
 | `OAUTH2_PROXY_COOKIE_EXPIRE` | Recommended: `8h` (oauth2-proxy's default is 7 days). How often agents must go back through ProConnect, and how long a removed email keeps access. |
 
 Who gets in, using one of these (oauth2-proxy lets everyone through who matches
@@ -197,6 +197,23 @@ as good as the emails it checks.
 `OAUTH2_PROXY_HTTP_ADDRESS`, `OAUTH2_PROXY_UPSTREAMS` and
 `OAUTH2_PROXY_REVERSE_PROXY` are set by `bin/web`, since `nginx.conf.erb`
 depends on them.
+
+### Sign-in and error pages
+
+`bin/web` points `OAUTH2_PROXY_CUSTOM_TEMPLATES_DIR` to
+[`oauth2-proxy-templates/`](oauth2-proxy-templates), French pages in the same
+style as `rie.html`:
+
+- `sign_in.html`: the [official ProConnect button](https://partenaires.proconnect.gouv.fr/docs/fournisseur-service/bouton_proconnect)
+  (its CSS copied as-is) and its "Qu'est-ce que ProConnect ?" link. Only shown
+  without `OAUTH2_PROXY_SKIP_PROVIDER_BUTTON=true`.
+- `error.html`: "Accès refusé" for a ProConnect account outside the allowlist,
+  "Connexion impossible" with a retry button for a failed login (e.g. an expired
+  sign-in page). oauth2-proxy answers 403 to both: the template tells them apart
+  by oauth2-proxy's message, so check it still does after an oauth2-proxy upgrade.
+
+`OAUTH2_PROXY_FOOTER` (HTML allowed), e.g. who to ask for access, is shown at
+the bottom of both pages.
 
 Logging out of Metabase doesn't end the ProConnect session; `/oauth2/sign_out`
 clears oauth2-proxy's cookie.

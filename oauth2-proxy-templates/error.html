@@ -1,0 +1,51 @@
+{{define "error.html"}}
+{{- /* oauth2-proxy answers 403 both to an email outside the allowlist and to a
+  failed login (e.g. missing CSRF cookie). Only the first one has no message of its
+  own: oauth2-proxy's default 403 text, or its app error with SHOW_DEBUG_ON_ERROR. */ -}}
+{{- $refused := and (eq .StatusCode 403) (or (eq .Message "You do not have permission to access this resource.") (eq .Message "Invalid session: unauthorized")) -}}
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ if $refused }}Accès refusé{{ else }}Connexion impossible{{ end }}</title>
+<style>
+  body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #f6f6f6; color: #161616; font-family: Marianne, Arial, sans-serif; }
+  main { max-width: 36rem; margin: 1rem; padding: 2rem; background: #fff; border-top: 4px solid #000091; }
+  h1 { margin-top: 0; color: #000091; font-size: 1.5rem; }
+  a { color: #000091; }
+  footer { margin-top: 2rem; padding-top: 1rem; border-top: 1px solid #ddd; font-size: .875rem; color: #666; }
+  .button { display: inline-block; margin-top: 1rem; padding: .5rem 1.5rem; background: #000091; color: #fff; text-decoration: none; border: none; font: inherit; cursor: pointer; }
+  .button:hover { background: #1212ff; }
+  details { margin-top: 1.5rem; font-size: .875rem; color: #666; }
+</style>
+</head>
+<body>
+<main>
+  {{ if $refused }}
+  <h1>Accès refusé</h1>
+  <p>Vous êtes bien identifié avec ProConnect, mais votre compte n'est pas autorisé à accéder à cette instance Metabase.</p>
+  <p>Pour demander un accès, contactez l'équipe qui administre cette instance en lui indiquant l'adresse e-mail de votre compte ProConnect.</p>
+  {{ else }}
+  <h1>Connexion impossible</h1>
+  <p>La connexion avec ProConnect n'a pas abouti. Cela arrive notamment si la page de connexion est restée ouverte trop longtemps.</p>
+  {{ end }}
+  {{ if not $refused }}
+  <form method="GET" action="{{.ProxyPrefix}}/sign_in">
+    <input type="hidden" name="rd" value="{{.Redirect}}">
+    <button type="submit" class="button">Réessayer</button>
+  </form>
+  {{ end }}
+  {{ if or .Message .RequestID }}
+  <details>
+    <summary>Détails techniques</summary>
+    <p>Code {{.StatusCode}}{{ if .Title }} ({{.Title}}){{ end }}</p>
+    {{ if .Message }}<p>{{.Message}}</p>{{ end }}
+    {{ if .RequestID }}<p>Identifiant de la requête : {{.RequestID}}</p>{{ end }}
+  </details>
+  {{ end }}
+  {{ if and .Footer (ne .Footer "-") }}<footer>{{.Footer}}</footer>{{ end }}
+</main>
+</body>
+</html>
+{{end}}
