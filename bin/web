@@ -15,6 +15,8 @@ if [ -n "${OAUTH2_PROXY_CLIENT_ID:-}" ]; then
   export OAUTH2_PROXY_HTTP_ADDRESS=127.0.0.1:4180
   export OAUTH2_PROXY_UPSTREAMS=static://202
   export OAUTH2_PROXY_REVERSE_PROXY=true
+  # French sign-in (official ProConnect button) and error pages, see README.
+  export OAUTH2_PROXY_CUSTOM_TEMPLATES_DIR="$PWD/oauth2-proxy-templates"
   bin/start_oauth2_proxy.sh &
   pids+=($!)
 fi
